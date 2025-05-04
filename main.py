@@ -1,6 +1,7 @@
-print("Starting main.py")
-from src.gui import run_gui
+import tkinter as tk
+from gui.app import ToolsClassifierApp
 
 if __name__ == "__main__":
-    print("Calling run_gui")
-    run_gui()
+    root = tk.Tk()
+    app = ToolsClassifierApp(root)
+    root.mainloop()
