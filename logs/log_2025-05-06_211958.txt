@@ -1,0 +1,14 @@
+2025-05-06 21:19:58,989 - INFO - Инициализация ModelTrainer
+2025-05-06 21:19:58,989 - INFO - Устройство: cuda
+2025-05-06 21:19:58,989 - INFO - Количество классов: 7 (['gasolinecan', 'hammer', 'pliers', 'rope', 'screwdriver', 'toolbox', 'wrench'])
+2025-05-06 21:19:58,989 - INFO - Размер train_loader: 168 батчей
+2025-05-06 21:19:58,989 - INFO - Размер test_loader: 1 батчей
+2025-05-06 21:20:06,363 - INFO - Модель загружена из tools_classifier.pth
+2025-05-06 21:21:20,355 - INFO - Модель загружена из tools_classifier.pth
+2025-05-06 21:21:28,764 - INFO - Модель загружена из tools_classifier.pth
+2025-05-06 21:22:23,232 - INFO - Модель загружена из tools_classifier.pth
+2025-05-06 21:22:29,481 - INFO - Модель загружена из tools_classifier.pth
+2025-05-06 21:24:29,189 - INFO - Модель загружена из tools_classifier.pth
+2025-05-06 21:24:39,294 - INFO - Модель загружена из tools_classifier.pth
+2025-05-06 21:24:44,091 - INFO - Модель загружена из tools_classifier.pth
+2025-05-06 21:24:50,271 - INFO - Модель загружена из tools_classifier.pth

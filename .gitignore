@@ -64,6 +64,4 @@ pythonenv*
 *.log
 
 models/
-plots/
 dataset/
-logs/
