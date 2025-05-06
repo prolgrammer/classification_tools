@@ -19,8 +19,8 @@ class Logger:
         # Формат логов
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
-        # Файловый обработчик
-        file_handler = logging.FileHandler(log_file)
+        # Файловый обработчик с кодировкой utf-8
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setFormatter(formatter)
         self.logger.addHandler(file_handler)
 

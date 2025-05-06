@@ -5,57 +5,77 @@ from torchvision import datasets, transforms
 from PIL import Image
 import pandas as pd
 
+
 class TestDataset(Dataset):
-    def __init__(self, image_dir, csv_file, transform=None):
+    def __init__(self, image_dir, csv_file, class_names, transform=None):
         self.image_dir = image_dir
         self.transform = transform
+        self.class_names = class_names  # Принимаем class_names извне
+        self.label_to_idx = {name: idx for idx, name in enumerate(self.class_names)}
 
-        # Чтение CSV с исправлением формата
-        self.annotations = pd.read_csv(csv_file, header=None, names=['Label', '_1', '_2', '_3', '_4', 'Id', '_5', '_6'])
-        self.annotations = self.annotations[['Id', 'Label']]  # Оставляем только нужные колонки
+        # Чтение CSV с проверкой
+        try:
+            self.annotations = pd.read_csv(csv_file, header=None,
+                                           names=['Label', '_1', '_2', '_3', '_4', 'Id', '_5', '_6'])
+            print("CSV успешно загружен. Пример данных:")
+            print(self.annotations.head(3))
+        except Exception as e:
+            raise ValueError(f"❌ Ошибка чтения CSV: {e}")
+
+        # Фильтрация данных
+        initial_count = len(self.annotations)
+        self.annotations = self.annotations[['Id', 'Label']].drop_duplicates('Id')
+        print(f"Оставлено {len(self.annotations)}/{initial_count} записей после очистки")
 
         # Нормализация меток
         self.annotations['Label'] = self.annotations['Label'].str.lower().str.replace(' ', '')
-        valid_labels = {'gasolinecan', 'hammer', 'pliers', 'rope', 'screwdriver', 'toolbox', 'wrench'}
+        valid_labels = set(self.class_names)  # Используем переданные class_names
 
-        # Фильтрация некорректных меток
-        invalid_labels = set(self.annotations['Label']) - valid_labels
-        if invalid_labels:
-            print(f"🚨 Удалены некорректные метки: {invalid_labels}")
+        invalid = set(self.annotations['Label']) - valid_labels
+        if invalid:
+            print(f"Удалены некорректные метки: {invalid}")
             self.annotations = self.annotations[self.annotations['Label'].isin(valid_labels)]
 
-        # Логирование
-        print("🔍 Статистика меток после очистки:")
-        print(self.annotations['Label'].value_counts())
+        # Фильтрация файлов, которые существуют
+        valid_files = []
+        valid_labels = []
+        for idx, row in self.annotations.iterrows():
+            img_path = os.path.join(self.image_dir, row['Id'])
+            if os.path.exists(img_path):
+                valid_files.append(row['Id'])
+                valid_labels.append(row['Label'])
+            else:
+                print(f"Пропущен файл (не существует): {img_path}")
 
-        self.image_files = self.annotations['Id'].tolist()
-        self.labels = self.annotations['Label'].tolist()
-        self.class_names = sorted(valid_labels)
-        self.label_to_idx = {name: idx for idx, name in enumerate(self.class_names)}
+        if not valid_files:
+            raise ValueError("❌ Нет доступных файлов после фильтрации. Проверьте пути и CSV.")
+
+        self.image_files = valid_files
+        self.labels = valid_labels
+        print(f"Оставлено {len(self.image_files)} файлов после проверки существования")
+
+        print("\nРаспределение меток:")
+        print(pd.Series(self.labels).value_counts())
 
     def __len__(self):
         return len(self.image_files)
 
     def __getitem__(self, idx):
         img_path = os.path.join(self.image_dir, self.image_files[idx])
-        image = Image.open(img_path).convert('RGB')
+        try:
+            image = Image.open(img_path).convert('RGB')
+        except Exception as e:
+            print(f"Ошибка загрузки {img_path}: {e}")
+            raise
+
         label_name = self.labels[idx]
-        
-        valid_labels = ['gasoline can', 'hammer', 'pliers', 'rope', 'screwdriver', 'toolbox', 'wrench']
-        self.annotations = self.annotations[self.annotations['Label'].isin(valid_labels)]
-    
-        if label_name not in self.label_to_idx:
-            raise ValueError(f"Label '{label_name}' not in class mapping!")
-    
         label = self.label_to_idx[label_name]
-    
-        if label >= len(self.class_names):  # Должно быть 0-6
-            raise ValueError(f"Label index {label} is out of bounds (max={len(self.class_names)-1})")
-    
+
         if self.transform:
             image = self.transform(image)
-    
+
         return image, label
+
 
 class DatasetLoader:
     def __init__(self, data_dir, batch_size=32):
@@ -86,44 +106,49 @@ class DatasetLoader:
             if not os.path.exists(path):
                 raise FileNotFoundError(f"Path {path} not found. Check dataset structure. Current working directory: {os.getcwd()}")
 
-        # Загрузка тренировочного и валидационного датасетов
+                # Загрузка тренировочного и валидационного датасетов
         train_dataset = datasets.ImageFolder(train_dir, transform=self.transform)
         val_dataset = datasets.ImageFolder(val_dir, transform=self.test_transform)
-        test_dataset = TestDataset(test_dir, csv_file, transform=self.test_transform)
 
         # Нормализация имен классов
-        train_classes = [c.lower().replace('screw driver', 'screwdriver').replace('tool box', 'toolbox') for c in train_dataset.classes]
-        val_classes = [c.lower().replace('screw driver', 'screwdriver').replace('tool box', 'toolbox') for c in val_dataset.classes]
-        test_classes = [c.lower().replace('screw driver', 'screwdriver').replace('tool box', 'toolbox') for c in test_dataset.class_names]
+        train_classes = [c.lower().replace('screw driver', 'screwdriver').replace('tool box', 'toolbox') for c
+                         in train_dataset.classes]
+        val_classes = [c.lower().replace('screw driver', 'screwdriver').replace('tool box', 'toolbox') for c in
+                       val_dataset.classes]
 
-        # Исключаем нежелательные классы
-        excluded_classes = ['pebbel', 'train_data', 'validation_data_V2']
-        train_classes = [c for c in train_classes if c not in excluded_classes]
-        val_classes = [c for c in val_classes if c not in excluded_classes]
-        test_classes = [c for c in test_classes if c not in excluded_classes]
+        # Определяем валидные классы
+        valid_classes = ['gasolinecan', 'hammer', 'pliers', 'rope', 'screwdriver', 'toolbox', 'wrench']
+        train_classes = [c for c in train_classes if c in valid_classes]
+        val_classes = [c for c in val_classes if c in valid_classes]
 
         # Проверка согласованности классов
-        all_classes = sorted(list(set(train_classes + val_classes + test_classes)))
-        if not all_classes:
-            raise ValueError("No valid classes found after normalization. Check dataset class names.")
+        all_classes = sorted(valid_classes)  # Используем только валидные классы
+        print(f"Valid classes: {all_classes}")
 
-        if set(train_classes) != set(val_classes) or set(train_classes) != set(test_classes):
-            print("Warning: Class sets differ between datasets.")
-            print(f"Train classes: {train_classes}")
-            print(f"Validation classes: {val_classes}")
-            print(f"Test classes: {test_classes}")
-            print("Using all unique classes:", all_classes)
+        # Загрузка тестового датасета
+        test_dataset = TestDataset(test_dir, csv_file, class_names=all_classes, transform=self.test_transform)
 
         # Приведение классов к единому списку
-        self.class_names = all_classes
         train_dataset.classes = all_classes
         val_dataset.classes = all_classes
         test_dataset.class_names = all_classes
 
         # Обновление маппинга меток
-        train_dataset.class_to_idx = {name: idx for idx, name in enumerate(all_classes)}
-        val_dataset.class_to_idx = {name: idx for idx, name in enumerate(all_classes)}
-        test_dataset.label_to_idx = {name: idx for idx, name in enumerate(all_classes)}
+        class_to_idx = {name: idx for idx, name in enumerate(all_classes)}
+        train_dataset.class_to_idx = class_to_idx
+        val_dataset.class_to_idx = class_to_idx
+        test_dataset.label_to_idx = class_to_idx
+
+        # Фильтрация данных в ImageFolder (удаление некорректных меток)
+
+        def filter_dataset(dataset, valid_idx):
+            valid_samples = [(path, idx) for path, idx in dataset.samples if idx in valid_idx]
+            dataset.samples = valid_samples
+            dataset.targets = [idx for _, idx in valid_samples]
+            return dataset
+
+        train_dataset = filter_dataset(train_dataset, list(class_to_idx.values()))
+        val_dataset = filter_dataset(val_dataset, list(class_to_idx.values()))
 
         # DataLoader'ы
         train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
@@ -133,6 +158,9 @@ class DatasetLoader:
         print("Unique classes in train:", train_dataset.classes)
         print("Unique classes in val:", val_dataset.classes)
         print("Unique classes in test:", test_dataset.class_names)
-        print("Total unique classes:", self.class_names)
+        print("Total unique classes:", all_classes)
+        print(f"Train dataset size: {len(train_dataset)}")
+        print(f"Val dataset size: {len(val_dataset)}")
+        print(f"Test dataset size: {len(test_dataset)}")
 
-        return train_loader, val_loader, test_loader, self.class_names
+        return train_loader, val_loader, test_loader, all_classes
