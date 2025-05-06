@@ -9,20 +9,28 @@ class TestDataset(Dataset):
     def __init__(self, image_dir, csv_file, transform=None):
         self.image_dir = image_dir
         self.transform = transform
-        # Читаем CSV и нормализуем метки
-        self.annotations = pd.read_csv(csv_file)
-        self.annotations['Label'] = self.annotations['Label'].str.lower().str.replace('screw driver', 'screwdriver')
-        # Удаляем дубликаты, оставляя первую метку для каждого изображения
-        self.annotations = self.annotations.drop_duplicates(subset=['Id'], keep='first')
-        initial_count = len(self.annotations)
-        self.image_files = [
-            f for f in self.annotations['Id']
-            if os.path.exists(os.path.join(image_dir, f))
-        ]
-        filtered_count = len(self.annotations)
-        print(f"Filtered {initial_count - filtered_count} missing files. Kept {filtered_count} valid entries.")
+
+        # Чтение CSV с исправлением формата
+        self.annotations = pd.read_csv(csv_file, header=None, names=['Label', '_1', '_2', '_3', '_4', 'Id', '_5', '_6'])
+        self.annotations = self.annotations[['Id', 'Label']]  # Оставляем только нужные колонки
+
+        # Нормализация меток
+        self.annotations['Label'] = self.annotations['Label'].str.lower().str.replace(' ', '')
+        valid_labels = {'gasolinecan', 'hammer', 'pliers', 'rope', 'screwdriver', 'toolbox', 'wrench'}
+
+        # Фильтрация некорректных меток
+        invalid_labels = set(self.annotations['Label']) - valid_labels
+        if invalid_labels:
+            print(f"🚨 Удалены некорректные метки: {invalid_labels}")
+            self.annotations = self.annotations[self.annotations['Label'].isin(valid_labels)]
+
+        # Логирование
+        print("🔍 Статистика меток после очистки:")
+        print(self.annotations['Label'].value_counts())
+
+        self.image_files = self.annotations['Id'].tolist()
         self.labels = self.annotations['Label'].tolist()
-        self.class_names = sorted(list(set(self.labels)))
+        self.class_names = sorted(valid_labels)
         self.label_to_idx = {name: idx for idx, name in enumerate(self.class_names)}
 
     def __len__(self):
@@ -31,11 +39,22 @@ class TestDataset(Dataset):
     def __getitem__(self, idx):
         img_path = os.path.join(self.image_dir, self.image_files[idx])
         image = Image.open(img_path).convert('RGB')
-        label = self.label_to_idx[self.labels[idx]]
-
+        label_name = self.labels[idx]
+        
+        valid_labels = ['gasoline can', 'hammer', 'pliers', 'rope', 'screwdriver', 'toolbox', 'wrench']
+        self.annotations = self.annotations[self.annotations['Label'].isin(valid_labels)]
+    
+        if label_name not in self.label_to_idx:
+            raise ValueError(f"Label '{label_name}' not in class mapping!")
+    
+        label = self.label_to_idx[label_name]
+    
+        if label >= len(self.class_names):  # Должно быть 0-6
+            raise ValueError(f"Label index {label} is out of bounds (max={len(self.class_names)-1})")
+    
         if self.transform:
             image = self.transform(image)
-
+    
         return image, label
 
 class DatasetLoader:
@@ -111,10 +130,9 @@ class DatasetLoader:
         val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False)
         test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
-        # После загрузки данных (в load_data())
-        print("Unique labels in train:", set(y for _, y in train_dataset))
-        print("Unique labels in val:", set(y for _, y in val_dataset))
-        print("Unique labels in test:", set(y for _, y in test_dataset))
-        print("Class names:", self.class_names)
+        print("Unique classes in train:", train_dataset.classes)
+        print("Unique classes in val:", val_dataset.classes)
+        print("Unique classes in test:", test_dataset.class_names)
+        print("Total unique classes:", self.class_names)
 
         return train_loader, val_loader, test_loader, self.class_names

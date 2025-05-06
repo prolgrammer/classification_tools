@@ -65,3 +65,5 @@ pythonenv*
 
 models/
 plots/
+dataset/
+logs/
